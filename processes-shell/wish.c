@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-06 18:32:44
+ * @LastEditTime: 2020-12-06 19:22:41
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -10,25 +10,26 @@
 
 // definition and declaration of global variable
 
-char *cmd, *args[16];
 char *paths[64];
-size_t w_argc, path_cnt;
-enum builtin_cmd bcmd;
+size_t path_cnt;
 
-const int cmd_len_limit = 64;
-const int arg_num_limit = 16;
-const int arg_len_limit = 64;
-const int path_num_limit = 64;
+const size_t cmd_len_limit = 64;
+const size_t cmd_num_limit = 64;
+const size_t arg_num_limit = 16;
+const size_t arg_len_limit = 64;
+const size_t path_num_limit = 64;
 
 const char prompt[] = "wish> ";
 const char error_msg[] = "An error has occurred\n";
 
+cmd_parm_t *parms[64];
+
 
 bool wish_init()
 {
-    // pre allocate arguments' space
-    for(size_t i = 0; i < arg_num_limit; ++i) {
-        args[i] = (char *)malloc(arg_len_limit);
+
+    for(size_t i = 0; i < cmd_num_limit; ++i) {
+        parms[i] = (cmd_parm_t *)malloc(sizeof(cmd_parm_t));
     }
 
     // set default path
@@ -60,92 +61,91 @@ bool wish_add_path(const char *new_path)
     return true;
 }
 
-bool wish_parse_input(const char *input, bool *Isfinished)
+void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
 {
+    // first set some attributes;
+    target->bcmd = none;
+    target->w_argc = 0;
 
-    // we set Isfinished to ture as we first only
-    // consider one command condition
-    *Isfinished = true;
-    
-    // first let built-in command flags to be none
-    bcmd = none;
-    w_argc = 0;
-
-    char *s = input, *token = NULL;
+    char *s = cmd, *token = NULL;
     bool valid_cmd = false, valid_args = true;
-    // jump all space at the beginning
+
+    // skip all space at the begining
     while(isspace(*s)) 
         ++s;
-
+    
+    // first try parse the command 
     token = strsep(&s, " ");
     if(token != NULL) {
         valid_cmd = true;
-        cmd = token;
-        args[w_argc++] = cmd;
-    }else return false;
-
-    // parse all possible arguments
-    while(token) {
-        token = strsep(&s, " ");
-        // only when the token is valid will we
-        // put it in the args array
-        if(token) {
-            //args[w_argc++] = token;
-            strcpy(args[w_argc++], token);
-        }
+        target->args[(target->w_argc)++] = token;
     }
     
-    // now see if these commands are built-in one
-    if(strcmp(cmd, "exit") == 0) {
-        bcmd = w_exit;
-    } else if(strcmp(cmd, "cd") == 0) {
-        bcmd = cd;
-    } else if(strcmp(cmd, "path") == 0) {
-        bcmd = path;
+    // parse the rest arguments
+    while(token) {
+        token = strsep(&s, " ");
+        // only when the token is valid
+        // do we put it into the target args array
+        if(token)  {
+            target->args[(target->w_argc)++] = token;
+        }
     }
 
-    return (valid_cmd && valid_args);
+    if(strcmp(cmd, "exit") == 0) {
+        target->bcmd = w_exit;
+    } else if(strcmp(cmd, "cd") == 0) {
+        target->bcmd = cd;
+    } else if(strcmp(cmd, "path") == 0) {
+        target->bcmd = path;
+    }
+
+    target->valid = valid_cmd & valid_args;
 }
 
-bool wish_execute_cmd()
+
+
+bool wish_execute_cmd(cmd_parm_t *exec_parm)
 {
     // executes_cmd should do the following work:
     // 1. check if this a built-in command
     // 2. if it is a build-in command, using built-in implementation
     //    otherwise, search path to find a binary file 
 
+    if(exec_parm->valid == false) 
+        return false;
+
     bool ret_e = false;
-    if(bcmd != none) {
-        ret_e = wish_execute_buildin_cmd();
+    if(exec_parm->bcmd != none) {
+        ret_e = wish_execute_buildin_cmd(exec_parm);
     }else {
         //TODO non-builtin command
-        ret_e = wish_execute_nonbuiltin_cmd();
+        ret_e = wish_execute_nonbuiltin_cmd(exec_parm);
     }
     return ret_e;
 }
 
-bool wish_execute_buildin_cmd()
+bool wish_execute_buildin_cmd(cmd_parm_t *exec_parm)
 {
-    assert(bcmd != none);
+    assert(exec_parm->bcmd != none);
 
-    switch (bcmd)
+    switch (exec_parm->bcmd)
     {
     case w_exit:
         // TODO exit command
         wish_do_exit();
     case cd:
         // TODO cd command
-        return wish_do_cd();
+        return wish_do_cd(exec_parm);
     case path:
         // TODO path command
-        return wish_do_path();
+        return wish_do_path(exec_parm);
     default:
         return false;
     }
     return true;
 }
 
-bool wish_execute_nonbuiltin_cmd()
+bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
 {
     // first we need to search which path 
     // has the binary file
@@ -159,19 +159,26 @@ bool wish_execute_nonbuiltin_cmd()
         if(tmp_file_name[len-1] != '/') {
             strcat(tmp_file_name, "/");
         }
-        strcat(tmp_file_name, cmd);
+        // cat them together
+        strcat(tmp_file_name, exec_parm->args[0]);
         // if this file exists for some specific path
         // and the current user has permission to access it
         // just executes it
         if(access(tmp_file_name, X_OK) != -1) {
+
             // start executes the binary file
-            strcpy(args[0], tmp_file_name);
+            //strcpy(args[0], tmp_file_name);
             // create another tmp args array for executing
-            char *tmp_args[w_argc+1];
-            for(size_t i = 0; i < w_argc; ++i) 
-                tmp_args[i] = args[i];
-            tmp_args[w_argc] = NULL;
+            char *tmp_args[exec_parm->w_argc+1];
+
+            // the first parameter must be file name
+            tmp_args[0] = tmp_file_name;
+
+            for(size_t i = 1; i < exec_parm->w_argc; ++i) 
+                tmp_args[i] = (exec_parm->args)[i];
+            tmp_args[exec_parm->w_argc] = NULL;
             wish_execute_binary(tmp_args);
+
             return true;
         }
     }
@@ -201,13 +208,17 @@ void wish_do_exit() {
     exit(EXIT_SUCCESS);
 }
 
-bool wish_do_cd() {
+bool wish_do_cd(cmd_parm_t *exec_parm) {
     // which means there are more than two 
     // target directory, which is invalid
-    if(w_argc > 2) return false;
+    if(exec_parm->w_argc > 2) {
+        wish_print_error();
+        return false;
+    }
+
     int status = 0;
     // chidir syscall will return -1 if error occurs
-    if((status = chdir(args[1])) == -1){
+    if((status = chdir((exec_parm->args)[1])) == -1){
         wish_print_error();
         return false;
     }
@@ -215,13 +226,14 @@ bool wish_do_cd() {
 }
 
 // there is some 
-bool wish_do_path() {
+bool wish_do_path(cmd_parm_t *exec_parm) {
     // if there is only one parameter
     // which means no directory parameter for path
-    if(w_argc == 1) return false;
+    if(exec_parm->w_argc == 1) return false;
     // we might add multiple path
-    for(size_t i = 1; i < w_argc; ++i){
-        if(!wish_add_path(args[i])) return false;
+    for(size_t i = 1; i < exec_parm->w_argc; ++i){
+        if(!wish_add_path((exec_parm->args)[i])) 
+            return false;
     }
     return true;
 }
@@ -250,12 +262,24 @@ bool wish_run(FILE *open_fd, bool usr_interface)
             read_pos[len-1] = '\0';
         
         bool finished = false, ret = true;
+        size_t pcmd_num = 0;
+        char *s = read_pos, *token = NULL;
 
-        if(wish_parse_input(read_pos, &finished)) {
-            ret = wish_execute_cmd();
+        token = strsep(&s, "&");
+        while(token) {
+            wish_parse_single_cmd(token, parms[pcmd_num++]);
+            token = strsep(&s, "&");
+        }
+        // one error might occured as there might be
+        // multiple process running at the same time
+        for(size_t i = 0; i < pcmd_num; ++i){
+            if(!(parms[i]->valid)) 
+                continue;
+            ret = wish_execute_cmd(parms[i]);
             flags &= ret;
         }
     }
+
     return flags;
 }
 
