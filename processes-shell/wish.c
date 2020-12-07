@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-06 19:22:41
+ * @LastEditTime: 2020-12-07 11:42:58
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -22,9 +22,16 @@ const size_t path_num_limit = 64;
 const char prompt[] = "wish> ";
 const char error_msg[] = "An error has occurred\n";
 
+const char arguments_sep[] = " ";
+const char cmdline_sep[] = "&";
+
 cmd_parm_t *parms[64];
 
 
+
+// Note: the element of path array must be copied
+// instead of simple assigning operation of char pointer
+// The space pointer pointing to might be freed
 bool wish_init()
 {
 
@@ -75,7 +82,7 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
         ++s;
     
     // first try parse the command 
-    token = strsep(&s, " ");
+    token = strsep(&s, arguments_sep);
     if(token != NULL) {
         valid_cmd = true;
         target->args[(target->w_argc)++] = token;
@@ -83,26 +90,26 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
     
     // parse the rest arguments
     while(token) {
-        token = strsep(&s, " ");
+        token = strsep(&s, arguments_sep);
         // only when the token is valid
         // do we put it into the target args array
         if(token)  {
             target->args[(target->w_argc)++] = token;
         }
     }
-
-    if(strcmp(cmd, "exit") == 0) {
-        target->bcmd = w_exit;
-    } else if(strcmp(cmd, "cd") == 0) {
-        target->bcmd = cd;
-    } else if(strcmp(cmd, "path") == 0) {
-        target->bcmd = path;
+    if(valid_cmd) 
+    {
+        if(strcmp(target->args[0], "exit") == 0) {
+            target->bcmd = w_exit;
+        } else if(strcmp(target->args[0], "cd") == 0) {
+            target->bcmd = cd;
+        } else if(strcmp(target->args[0], "path") == 0) {
+            target->bcmd = path;
+        }
     }
 
     target->valid = valid_cmd & valid_args;
 }
-
-
 
 bool wish_execute_cmd(cmd_parm_t *exec_parm)
 {
@@ -167,16 +174,17 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
         if(access(tmp_file_name, X_OK) != -1) {
 
             // start executes the binary file
-            //strcpy(args[0], tmp_file_name);
             // create another tmp args array for executing
             char *tmp_args[exec_parm->w_argc+1];
 
             // the first parameter must be file name
             tmp_args[0] = tmp_file_name;
-
             for(size_t i = 1; i < exec_parm->w_argc; ++i) 
                 tmp_args[i] = (exec_parm->args)[i];
+            // WARNING: The first non-parm must be NULL, otherwise
+            // execv can not recognize it
             tmp_args[exec_parm->w_argc] = NULL;
+
             wish_execute_binary(tmp_args);
 
             return true;
@@ -189,8 +197,8 @@ void wish_execute_binary(char *arguments[])
 {
     int status = 0;
     if(fork() == 0) {
+        // note: execv does not return if they succeed
         execv(arguments[0], arguments);
-        exit(EXIT_SUCCESS);
     }
     else {
         wait(&status);
@@ -265,10 +273,10 @@ bool wish_run(FILE *open_fd, bool usr_interface)
         size_t pcmd_num = 0;
         char *s = read_pos, *token = NULL;
 
-        token = strsep(&s, "&");
+        token = strsep(&s, cmdline_sep);
         while(token) {
             wish_parse_single_cmd(token, parms[pcmd_num++]);
-            token = strsep(&s, "&");
+            token = strsep(&s, cmdline_sep);
         }
         // one error might occured as there might be
         // multiple process running at the same time
