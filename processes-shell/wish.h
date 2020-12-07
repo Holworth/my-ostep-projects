@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:23:14
- * @LastEditTime: 2020-12-07 13:47:35
+ * @LastEditTime: 2020-12-07 14:32:05
  * @LastEditors: Please set LastEditors
  * @Description: The main file of project wish(Wisconshing Shell)
  */
@@ -93,6 +93,9 @@ bool wish_parse_input(const char *, bool *);
  * @param { const char * }: where the start address of the input
  *        { cmd_parm_t *}: where the parse result should be put;
  * @return { void }
+ * Note: This function will also check whether the arguments of this command is valid
+ * The validation of the command contains:
+ *  1. Arguments number      2.Arguments type     3. Redirection
  */
 void wish_parse_single_cmd(const char *, cmd_parm_t *);
 /**

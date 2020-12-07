@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-07 14:11:22
+ * @LastEditTime: 2020-12-07 14:34:48
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -26,8 +26,15 @@ const char arguments_sep[] = " ";
 const char cmdline_sep[] = "&";
 const char default_path[] = "/bin";
 
-const size_t bcmd_arg_num_max[] = {/*none=*/UINT32_MAX, /*exit=*/1, /*cd=*/2, /*path=*/UINT32_MAX};
-const size_t bcmd_arg_num_min[] = {/*none=*/0, /*exit=*/1, /*cd=*/2, /*path=*/2};
+const size_t bcmd_arg_num_max[] = { /*none=*/ UINT32_MAX , 
+                                    /*exit=*/ 1          , 
+                                    /*cd=  */ 2          , 
+                                    /*path=*/ UINT32_MAX};
+
+const size_t bcmd_arg_num_min[] = { /*none=*/0, 
+                                    /*exit=*/1, 
+                                    /*cd=  */2, 
+                                    /*path=*/1 };
 
 cmd_parm_t *parms[64];
 
@@ -167,6 +174,7 @@ bool wish_execute_buildin_cmd(cmd_parm_t *exec_parm)
     return true;
 }
 
+// note that this function can't catch the error informantion of non-builtin command
 bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
 {
     // first we need to search which path 
@@ -254,7 +262,17 @@ bool wish_do_cd(cmd_parm_t *exec_parm) {
 bool wish_do_path(cmd_parm_t *exec_parm) {
 
     // we assert that there are at lease one path to add;
-    assert(exec_parm->w_argc >= 2);
+    assert(exec_parm->w_argc >= 1);
+
+    // path always overwrite the old path
+    // before overwrite the old paths, free their space;
+    for(size_t i = 0; i < path_cnt; ++i){
+        if(paths[i]) {
+            free(paths[i]);
+        }
+    }
+    //overwrite the old path
+    path_cnt = 0;
 
     // we might add multiple path
     for(size_t i = 1; i < exec_parm->w_argc; ++i){

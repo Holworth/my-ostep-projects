@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 15:15:04
- * @LastEditTime: 2020-12-06 18:33:25
+ * @LastEditTime: 2020-12-07 14:41:48
  * @LastEditors: Please set LastEditors
  * @Description: main.c file contains the entrance of program
  */
@@ -31,8 +31,11 @@ int main(int argc, char *argv[]) {
                 wish_print_error();
                 exit(EXIT_FAILURE);
             }
-            if(!wish_run(open_fd, usr_interface))
+            if(!wish_run(open_fd, usr_interface)){
+                fclose(open_fd);
                 exit(EXIT_FAILURE);
+            }
+            fclose(open_fd);
         }
     }
     exit(EXIT_SUCCESS);
