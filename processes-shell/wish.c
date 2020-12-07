@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-07 14:34:48
+ * @LastEditTime: 2020-12-07 15:59:15
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -9,6 +9,7 @@
 #include "wish.h"
 
 #define USE_EXECVE  0
+#define REDIRECT    1
 
 // definition and declaration of global variable
 
@@ -21,6 +22,7 @@ const size_t path_num_limit = 64;
 
 const char prompt[] = "wish> ";
 const char error_msg[] = "An error has occurred\n";
+const char redir_sym[] = ">";
 
 const char arguments_sep[] = " ";
 const char cmdline_sep[] = "&";
@@ -29,11 +31,11 @@ const char default_path[] = "/bin";
 const size_t bcmd_arg_num_max[] = { /*none=*/ UINT32_MAX , 
                                     /*exit=*/ 1          , 
                                     /*cd=  */ 2          , 
-                                    /*path=*/ UINT32_MAX};
+                                    /*path=*/ UINT32_MAX };
 
-const size_t bcmd_arg_num_min[] = { /*none=*/0, 
-                                    /*exit=*/1, 
-                                    /*cd=  */2, 
+const size_t bcmd_arg_num_min[] = { /*none=*/0 , 
+                                    /*exit=*/1 , 
+                                    /*cd=  */2 , 
                                     /*path=*/1 };
 
 cmd_parm_t *parms[64];
@@ -83,33 +85,56 @@ bool wish_add_path(const char *new_path)
 
 void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
 {
-    // first set some attributes;
+    // first do some neccessary initilization
     target->bcmd = none;
     target->w_argc = 0;
+    target->redir_file[0] = '\0';
+    target->redirect = false;
+    target->valid = false;
 
     char *s = cmd, *token = NULL;
     bool valid_cmd = false, valid_args = true;
 
-    // skip all space at the begining
-    while(isspace(*s)) 
-        ++s;
-    
-    // first try parse the command 
+    // this implementation is more simple
+    bool redirect = false, multi_redirct = false;
+    size_t redir_file_num = 0;
+
+    // s is an empty string, no need to parse
     token = strsep(&s, arguments_sep);
-    if(token != NULL) {
-        valid_cmd = true;
-        target->args[(target->w_argc)++] = token;
-    }
-    
-    // parse the rest arguments
     while(token) {
-        token = strsep(&s, arguments_sep);
-        // only when the token is valid
-        // do we put it into the target args array
-        if(token)  {
-            target->args[(target->w_argc)++] = token;
+        
+        if(!redirect) {
+            if(strcmp(token, redir_sym) == 0) {
+                redirect = true;
+            } else {
+                // we can't put ">" into arguments array
+                // see if we have got the command
+                if(valid_cmd == false) {
+                    valid_cmd = true;
+                }
+                target->args[(target->w_argc)++] = token;
+            }
+        } else {
+            // if we have got the redirection symbol
+            // there are two redirection symbol, invalid!
+            if(strcmp(token, redir_sym) == 0) {
+                multi_redirct = true;
+                break;
+            } else {
+                // we cant copy the redirect file as we want
+                // since if the redirect file num exceeds 2 means these files
+                // are invalid, and won't be used 
+                strcpy(target->redir_file, token);
+                ++redir_file_num;
+                if(redir_file_num >= 2) 
+                    break;
+            }
         }
+        token = strsep(&s, arguments_sep);
     }
+
+    if(redirect && !multi_redirct) 
+        target->redirect = true;
 
     if(valid_cmd) 
     {
@@ -123,11 +148,18 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
     }
 
     // Check if arguments are valid. 
-    // We only do this for built-in commands
-    // Note: we only check if the arguments number are valid
+    // Note: we check 1. if the arguments number are valid for built-in commands
+    // 2. if the redirect is valid for non-builtin commands
     if(target->bcmd != none) {
         if( target->w_argc > bcmd_arg_num_max[target->bcmd] ||
             target->w_argc < bcmd_arg_num_min[target->bcmd])
+            valid_args = false;
+    } else {
+        // if there are more than two redirect symbol
+        // or there are only one redirect symbol but the redirect file num is invalid
+        if( multi_redirct || 
+            (redirect && (  redir_file_num == 0 || 
+                            redir_file_num >= 2 )))
             valid_args = false;
     }
 
@@ -207,7 +239,7 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
             // execv can not recognize it
             tmp_args[exec_parm->w_argc] = NULL;
 
-            wish_execute_binary(tmp_file_name, tmp_args);
+            wish_execute_binary(tmp_file_name, tmp_args, exec_parm->redirect, exec_parm->redir_file);
 
             return true;
         }
@@ -218,15 +250,23 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
 // note that the parameter "arguments" contains all arguments to execute
 // the file. Including the command itself
 // eg. file_path = "/bin/ls", arguments[0] = "ls"
-void wish_execute_binary(const char *file_path, char *arguments[])
+void wish_execute_binary(const char *file_path, char *arguments[], bool redirect, const char *redir_file)
 {
     int status = 0;
     if(fork() == 0) {
+        #if REDIRECT
+            if(redirect) {
+                int fd = open(redir_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                dup2(fd, fileno(stdin));
+                dup2(fd, fileno(stderr));
+                close(fd);
+            }
+        #endif
         // note: execv does not return if they succeed
         #if USE_EXECVE
-        execve(file_path, arguments, paths);
+            execve(file_path, arguments, paths);
         #else
-        execv(file_path, arguments);
+            execv(file_path, arguments);
         #endif
     }
     else {
@@ -311,7 +351,13 @@ bool wish_run(FILE *open_fd, bool usr_interface)
 
         token = strsep(&s, cmdline_sep);
         while(token) {
-            wish_parse_single_cmd(token, parms[pcmd_num++]);
+            // jump all space
+            while(isspace(*token))
+                ++token;
+            // if not an empty string
+            if(strcmp(token, "") != 0) {
+                wish_parse_single_cmd(token, parms[pcmd_num++]);
+            }
             token = strsep(&s, cmdline_sep);
         }
         // one error might occured as there might be

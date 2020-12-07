@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:23:14
- * @LastEditTime: 2020-12-07 14:32:05
+ * @LastEditTime: 2020-12-07 15:22:58
  * @LastEditors: Please set LastEditors
  * @Description: The main file of project wish(Wisconshing Shell)
  */
@@ -18,6 +18,9 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // Essential for using getline()
 #define _GNU_SOURCE
@@ -53,7 +56,8 @@ typedef struct cmd_parm
     char *args[16];
     enum builtin_cmd bcmd;
     size_t w_argc;
-    bool valid;
+    bool valid, redirect;
+    char redir_file[32];
 }cmd_parm_t;
 
 extern cmd_parm_t *parms[64];
@@ -125,7 +129,7 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *);
  * @param { char *[] } which is the array of parameter, also includes the command name
  * @return { void }
  */
-void wish_execute_binary(const char*, char *[]);
+void wish_execute_binary(const char*, char *[], bool, const char *);
 
 /**
  * Help output the usr interface
