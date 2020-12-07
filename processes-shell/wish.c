@@ -1,17 +1,17 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-07 11:42:58
+ * @LastEditTime: 2020-12-07 14:11:22
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
 
 #include "wish.h"
 
+#define USE_EXECVE  0
+
 // definition and declaration of global variable
 
-char *paths[64];
-size_t path_cnt;
 
 const size_t cmd_len_limit = 64;
 const size_t cmd_num_limit = 64;
@@ -24,9 +24,15 @@ const char error_msg[] = "An error has occurred\n";
 
 const char arguments_sep[] = " ";
 const char cmdline_sep[] = "&";
+const char default_path[] = "/bin";
+
+const size_t bcmd_arg_num_max[] = {/*none=*/UINT32_MAX, /*exit=*/1, /*cd=*/2, /*path=*/UINT32_MAX};
+const size_t bcmd_arg_num_min[] = {/*none=*/0, /*exit=*/1, /*cd=*/2, /*path=*/2};
 
 cmd_parm_t *parms[64];
 
+char *paths[64];
+size_t path_cnt;
 
 
 // Note: the element of path array must be copied
@@ -46,7 +52,7 @@ bool wish_init()
         fprintf(stderr, "[wish]: malloc failed\n");
         return false;
     }
-    strcpy(paths[path_cnt++], "/bin");
+    strcpy(paths[path_cnt++], default_path);
     return true;
 }
 
@@ -97,6 +103,7 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
             target->args[(target->w_argc)++] = token;
         }
     }
+
     if(valid_cmd) 
     {
         if(strcmp(target->args[0], "exit") == 0) {
@@ -106,6 +113,15 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
         } else if(strcmp(target->args[0], "path") == 0) {
             target->bcmd = path;
         }
+    }
+
+    // Check if arguments are valid. 
+    // We only do this for built-in commands
+    // Note: we only check if the arguments number are valid
+    if(target->bcmd != none) {
+        if( target->w_argc > bcmd_arg_num_max[target->bcmd] ||
+            target->w_argc < bcmd_arg_num_min[target->bcmd])
+            valid_args = false;
     }
 
     target->valid = valid_cmd & valid_args;
@@ -125,7 +141,6 @@ bool wish_execute_cmd(cmd_parm_t *exec_parm)
     if(exec_parm->bcmd != none) {
         ret_e = wish_execute_buildin_cmd(exec_parm);
     }else {
-        //TODO non-builtin command
         ret_e = wish_execute_nonbuiltin_cmd(exec_parm);
     }
     return ret_e;
@@ -178,14 +193,13 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
             char *tmp_args[exec_parm->w_argc+1];
 
             // the first parameter must be file name
-            tmp_args[0] = tmp_file_name;
-            for(size_t i = 1; i < exec_parm->w_argc; ++i) 
+            for(size_t i = 0; i < exec_parm->w_argc; ++i) 
                 tmp_args[i] = (exec_parm->args)[i];
             // WARNING: The first non-parm must be NULL, otherwise
             // execv can not recognize it
             tmp_args[exec_parm->w_argc] = NULL;
 
-            wish_execute_binary(tmp_args);
+            wish_execute_binary(tmp_file_name, tmp_args);
 
             return true;
         }
@@ -193,12 +207,19 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
     return false;
 }
 
-void wish_execute_binary(char *arguments[])
+// note that the parameter "arguments" contains all arguments to execute
+// the file. Including the command itself
+// eg. file_path = "/bin/ls", arguments[0] = "ls"
+void wish_execute_binary(const char *file_path, char *arguments[])
 {
     int status = 0;
     if(fork() == 0) {
         // note: execv does not return if they succeed
-        execv(arguments[0], arguments);
+        #if USE_EXECVE
+        execve(file_path, arguments, paths);
+        #else
+        execv(file_path, arguments);
+        #endif
     }
     else {
         wait(&status);
@@ -217,27 +238,24 @@ void wish_do_exit() {
 }
 
 bool wish_do_cd(cmd_parm_t *exec_parm) {
-    // which means there are more than two 
-    // target directory, which is invalid
-    if(exec_parm->w_argc > 2) {
-        wish_print_error();
-        return false;
-    }
+
+    // we assert there is exactly one file path
+    assert(exec_parm->w_argc == 2);
 
     int status = 0;
     // chidir syscall will return -1 if error occurs
     if((status = chdir((exec_parm->args)[1])) == -1){
-        wish_print_error();
+        //wish_print_error();
         return false;
     }
     return true;
 }
 
-// there is some 
 bool wish_do_path(cmd_parm_t *exec_parm) {
-    // if there is only one parameter
-    // which means no directory parameter for path
-    if(exec_parm->w_argc == 1) return false;
+
+    // we assert that there are at lease one path to add;
+    assert(exec_parm->w_argc >= 2);
+
     // we might add multiple path
     for(size_t i = 1; i < exec_parm->w_argc; ++i){
         if(!wish_add_path((exec_parm->args)[i])) 
@@ -281,10 +299,18 @@ bool wish_run(FILE *open_fd, bool usr_interface)
         // one error might occured as there might be
         // multiple process running at the same time
         for(size_t i = 0; i < pcmd_num; ++i){
-            if(!(parms[i]->valid)) 
+            // if this command's argument is false
+            if(!(parms[i]->valid)) {
+                wish_print_error();
+                flags &= false;
                 continue;
+            }
             ret = wish_execute_cmd(parms[i]);
             flags &= ret;
+            // which means executes failed
+            if(!ret) {
+                wish_print_error();
+            }
         }
     }
 
