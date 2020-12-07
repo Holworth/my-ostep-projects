@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-07 16:15:39
+ * @LastEditTime: 2020-12-07 16:17:21
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -269,9 +269,11 @@ void wish_execute_binary(const char *file_path, char *arguments[], bool redirect
             execv(file_path, arguments);
         #endif
     }
+    /*
     else {
         wait(&status);
     }
+    */
 }
 void wish_print_interface(){
     fprintf(stdout, "%s", prompt);
