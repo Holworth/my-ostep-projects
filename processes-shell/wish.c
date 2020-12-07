@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-07 15:59:15
+ * @LastEditTime: 2020-12-07 16:15:39
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -342,8 +342,10 @@ bool wish_run(FILE *open_fd, bool usr_interface)
         size_t len = strlen(read_pos);
 
         // set the last character to zero
-        if(read_pos[len-1] == '\n')
-            read_pos[len-1] = '\0';
+        // pre work: cut down all space from the back;
+        while(isspace(read_pos[len-1]))
+            --len;
+        read_pos[len] = '\0';
         
         bool finished = false, ret = true;
         size_t pcmd_num = 0;
