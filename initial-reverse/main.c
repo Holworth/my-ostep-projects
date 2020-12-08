@@ -14,6 +14,7 @@ list_t *list;
 
 /**
  * This function detects whether the two file is the same
+ * parameters fd1 & fd2 are file descriptor gained from fileno syscall
  */
 int same_file(int fd1, int fd2);
 
@@ -63,6 +64,8 @@ int main(int argc, char *argv[])
                 exit(EXIT_FAILURE);
             }
             */
+            // we check if these two files are the same file only when
+            // both FILE pointer are valid
             if(open_fd && tmp_open) {
                 int fd1 = fileno(open_fd), fd2 = fileno(tmp_open);
                 if(same_file(fd1, fd2) == 1) {
@@ -123,6 +126,8 @@ int main(int argc, char *argv[])
     exit(EXIT_SUCCESS);
 }
 
+// this function returns 1 if the given two files are the 
+// same file, otherwise return some error code
 int same_file(int fd1, int fd2)
 {
     struct stat stat1, stat2;
