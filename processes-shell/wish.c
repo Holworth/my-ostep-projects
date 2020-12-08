@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-08 11:00:27
+ * @LastEditTime: 2020-12-08 13:18:16
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -42,6 +42,7 @@ cmd_parm_t *parms[64];
 
 char *paths[64];
 size_t path_cnt;
+size_t pcmd_num;
 
 
 // Note: the element of path array must be copied
@@ -65,7 +66,7 @@ bool wish_init()
     return true;
 }
 
-bool wish_add_path(const char *new_path)
+bool wish_add_path(const char *new_path) 
 {
     // check array boundary is neccessary
     if(path_cnt >= path_num_limit) {
@@ -141,6 +142,7 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
     if(redirect && !multi_redirct) 
         target->redirect = true;
 
+    // Set built-in command flags
     if(valid_cmd) 
     {
         if(strcmp(target->args[0], "exit") == 0) {
@@ -153,8 +155,8 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
     }
 
     // Check if arguments are valid. 
-    // Note: we check 1. if the arguments number are valid for built-in commands
-    // 2. if the redirect is valid for non-builtin commands
+    // Note: we check (1) if the arguments number are valid for built-in commands
+    // (2) if the redirect is valid for non-builtin commands
     if(target->bcmd != none) {
         if( target->w_argc > bcmd_arg_num_max[target->bcmd] ||
             target->w_argc < bcmd_arg_num_min[target->bcmd])
@@ -241,13 +243,10 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
             for(size_t i = 0; i < exec_parm->w_argc; ++i) 
                 tmp_args[i] = (exec_parm->args)[i];
             // WARNING: The first non-parm must be NULL, otherwise
-            // execv can not recognize it
+            // execv can not recognize how many arguements are there
             tmp_args[exec_parm->w_argc] = NULL;
 
             wish_execute_binary(tmp_file_name, tmp_args, exec_parm->redirect, exec_parm->redir_file);
-            
-            int status = 0;
-            wait(&status);
 
             return true;
         }
@@ -256,32 +255,35 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
 }
 
 // note that the parameter "arguments" contains all arguments to execute
-// the file. Including the command itself
+// the file. The file_path specifies the target executable file path, while the first
+// parameter for arguments array is the command name, note that the command name may 
+// cause error in current test environment 
 // eg. file_path = "/bin/ls", arguments[0] = "ls"
 void wish_execute_binary(const char *file_path, char *arguments[], bool redirect, const char *redir_file)
 {
     int status = 0;
     if(fork() == 0) {
+        #if DEBUG
+        fprintf(stdout, "execute binary file %s\n", file_path);
+        #endif
         #if REDIRECT
-            if(redirect) {
-                int fd = open(redir_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                dup2(fd, fileno(stdin));
-                dup2(fd, fileno(stderr));
-                close(fd);
-            }
+        if(redirect) {
+            // O_TRUNC means clear all existed content for the existed file
+            int fd = open(redir_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+            dup2(fd, fileno(stdin));
+            dup2(fd, fileno(stderr));
+            close(fd);
+        }
         #endif
         // note: execv does not return if they succeed
+        // execv will replace current(child process here) executable image with the
+        // target file: file_path, eg. /bin/ls 
         #if USE_EXECVE
             execve(file_path, arguments, paths);
         #else
             execv(file_path, arguments);
         #endif
     }
-    /*
-    else {
-        wait(&status);
-    }
-    */
 }
 void wish_print_interface(){
     fprintf(stdout, "%s", prompt);
@@ -342,9 +344,8 @@ bool wish_run(FILE *open_fd, bool usr_interface)
             wish_print_interface();
         }
 
-        ssize_t nread = 0;
+        ssize_t nread = 0, cnt_read = 0;
         char *read_pos = NULL;
-        size_t cnt_read = 0;
 
         if((nread = getline(&read_pos, &cnt_read, open_fd)) == -1)
             break;
@@ -358,11 +359,12 @@ bool wish_run(FILE *open_fd, bool usr_interface)
         read_pos[len] = '\0';
         
         bool finished = false, ret = true;
-        size_t pcmd_num = 0;
+        pcmd_num = 0;
         char *s = read_pos, *token = NULL;
 
         token = strsep(&s, cmdline_sep);
-        while(token) {
+        while(token) 
+        {
             // jump all space
             while(isspace(*token))
                 ++token;
@@ -374,13 +376,22 @@ bool wish_run(FILE *open_fd, bool usr_interface)
         }
         // one error might occured as there might be
         // multiple process running at the same time
-        for(size_t i = 0; i < pcmd_num; ++i){
+        for(size_t i = 0; i < pcmd_num; ++i)
+        {
             // if this command's argument is false
+            // we even don't want to execute it
             if(!(parms[i]->valid)) {
                 wish_print_error();
                 flags &= false;
                 continue;
             }
+            // if we got an exit command, 
+            // we must wait for all child process to exit
+            #if DEBUG
+                if(parms[i]->bcmd == w_exit) {
+                    fprintf(stdout, "I want to exit\n");
+                }
+            #endif
             ret = wish_execute_cmd(parms[i]);
             flags &= ret;
             // which means executes failed
@@ -388,8 +399,13 @@ bool wish_run(FILE *open_fd, bool usr_interface)
                 wish_print_error();
             }
         }
+        // when run a paranell command
+        // wait for all paranell child process to end.
+        // WARNING: do not use wait(NULL)!!!
+        pid_t wpid;
+        int status = 0;
+        while((wpid = wait(&status) > 0)) ;
     }
-
     return flags;
 }
 

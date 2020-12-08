@@ -1,10 +1,13 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:23:14
- * @LastEditTime: 2020-12-08 10:26:56
+ * @LastEditTime: 2020-12-08 13:15:05
  * @LastEditors: Please set LastEditors
  * @Description: The main file of project wish(Wisconshing Shell)
  */
+
+#ifndef WISH_H_
+#define WISH_H_
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -153,9 +156,7 @@ bool wish_do_path(cmd_parm_t *);
  */
 bool wish_run(FILE *, bool);
 
-
-
-
+#endif
 
 
 
