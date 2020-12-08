@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-07 16:17:21
+ * @LastEditTime: 2020-12-08 10:43:57
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -240,6 +240,9 @@ bool wish_execute_nonbuiltin_cmd(cmd_parm_t *exec_parm)
             tmp_args[exec_parm->w_argc] = NULL;
 
             wish_execute_binary(tmp_file_name, tmp_args, exec_parm->redirect, exec_parm->redir_file);
+            
+            int status = 0;
+            wait(&status);
 
             return true;
         }
