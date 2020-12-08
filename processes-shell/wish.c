@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-08 10:43:57
+ * @LastEditTime: 2020-12-08 11:00:27
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -101,33 +101,38 @@ void wish_parse_single_cmd(const char *cmd, cmd_parm_t *target)
 
     // s is an empty string, no need to parse
     token = strsep(&s, arguments_sep);
-    while(token) {
-        
-        if(!redirect) {
-            if(strcmp(token, redir_sym) == 0) {
-                redirect = true;
-            } else {
-                // we can't put ">" into arguments array
-                // see if we have got the command
-                if(valid_cmd == false) {
-                    valid_cmd = true;
+    while(token) 
+    {
+        // see if token is empty, empty string doesn't 
+        // need to be parsed
+        if(strcmp(token, "") != 0) 
+        {
+            if(!redirect) {
+                if(strcmp(token, redir_sym) == 0) {
+                    redirect = true;
+                } else {
+                    // we can't put ">" into arguments array
+                    // see if we have got the command
+                    if(valid_cmd == false) {
+                        valid_cmd = true;
+                    }
+                    target->args[(target->w_argc)++] = token;
                 }
-                target->args[(target->w_argc)++] = token;
-            }
-        } else {
-            // if we have got the redirection symbol
-            // there are two redirection symbol, invalid!
-            if(strcmp(token, redir_sym) == 0) {
-                multi_redirct = true;
-                break;
             } else {
-                // we cant copy the redirect file as we want
-                // since if the redirect file num exceeds 2 means these files
-                // are invalid, and won't be used 
-                strcpy(target->redir_file, token);
-                ++redir_file_num;
-                if(redir_file_num >= 2) 
+                // if we have got the redirection symbol
+                // there are two redirection symbol, invalid!
+                if(strcmp(token, redir_sym) == 0) {
+                    multi_redirct = true;
                     break;
+                } else {
+                    // we cant copy the redirect file as we want
+                    // since if the redirect file num exceeds 2 means these files
+                    // are invalid, and won't be used 
+                    strcpy(target->redir_file, token);
+                    ++redir_file_num;
+                    if(redir_file_num >= 2) 
+                        break;
+                }
             }
         }
         token = strsep(&s, arguments_sep);
