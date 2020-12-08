@@ -1,7 +1,7 @@
 /*
  * @Author: Qihan Kang
  * @Date: 2020-12-06 13:42:58
- * @LastEditTime: 2020-12-08 13:18:16
+ * @LastEditTime: 2020-12-08 14:30:29
  * @LastEditors: Please set LastEditors
  * @Description: Source file for wish
  */
@@ -12,18 +12,18 @@
 #define REDIRECT    1
 
 // definition and declaration of global variable
-
-
 const size_t cmd_len_limit = 64;
 const size_t cmd_num_limit = 64;
 const size_t arg_num_limit = 16;
 const size_t arg_len_limit = 64;
 const size_t path_num_limit = 64;
 
+// helpful output const variables
 const char prompt[] = "wish> ";
 const char error_msg[] = "An error has occurred\n";
 const char redir_sym[] = ">";
 
+// helpful const variable for parsing command
 const char arguments_sep[] = " ";
 const char cmdline_sep[] = "&";
 const char default_path[] = "/bin";
@@ -41,8 +41,7 @@ const size_t bcmd_arg_num_min[] = { /*none=*/0 ,
 cmd_parm_t *parms[64];
 
 char *paths[64];
-size_t path_cnt;
-size_t pcmd_num;
+size_t path_cnt, pcmd_num;
 
 
 // Note: the element of path array must be copied
@@ -73,12 +72,13 @@ bool wish_add_path(const char *new_path)
         fprintf(stderr, "[wish]: No space for new path\n");
         return false;
     }
+    // Allocate the memory space only when it is needed
     paths[path_cnt] = (char *)malloc(strlen(new_path)+1);
     if(paths[path_cnt] == NULL) {
         fprintf(stderr, "[wish]: malloc failed\n");
         return false;
     }
-    // add path must use strcpy, instead of simply assigning
+    // Add path must use strcpy, instead of simply assigning
     // the char pointer to paths's element
     strcpy(paths[path_cnt++], new_path);
     return true;
@@ -269,10 +269,16 @@ void wish_execute_binary(const char *file_path, char *arguments[], bool redirect
         #if REDIRECT
         if(redirect) {
             // O_TRUNC means clear all existed content for the existed file
-            int fd = open(redir_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-            dup2(fd, fileno(stdin));
-            dup2(fd, fileno(stderr));
-            close(fd);
+            // int fd = open(redir_file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+            FILE *fd = fopen(redir_file, "w");
+            if(fd == NULL) {
+                wish_print_error();
+                exit(EXIT_FAILURE);
+            }
+            int outFileNo = fileno(fd);
+            dup2(outFileNo, fileno(stdin));
+            dup2(outFileNo, fileno(stderr));
+            fclose(fd);
         }
         #endif
         // note: execv does not return if they succeed
@@ -292,6 +298,9 @@ void wish_print_interface(){
 void wish_print_error(){
     fprintf(stderr, "%s", error_msg);
 }
+
+// The following three functions are built-in
+// commands implementation
 
 void wish_do_exit() {
     exit(EXIT_SUCCESS);
